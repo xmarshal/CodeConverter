@@ -11,7 +11,7 @@ namespace CodeConverter.Tests
 {
     public class ConverterTestBase
     {
-        private bool _testCstoVBCommentsByDefault = false;
+        private bool _testCstoVBCommentsByDefault = true;
         public void TestConversionCSharpToVisualBasic(string csharpCode, string expectedVisualBasicCode, bool expectSurroundingMethodBlock = false)
         {
             expectedVisualBasicCode = AddSurroundingMethodBlock(expectedVisualBasicCode, expectSurroundingMethodBlock);
