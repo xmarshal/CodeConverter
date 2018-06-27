@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading.Tasks;
 using EnvDTE;
 using EnvDTE80;
 using Microsoft.VisualStudio;
@@ -16,6 +17,7 @@ using Microsoft.VisualStudio.Shell.Interop;
 using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Editor;
 using Microsoft.VisualStudio.TextManager.Interop;
+using IAsyncServiceProvider = Microsoft.VisualStudio.Shell.IAsyncServiceProvider;
 
 namespace CodeConverter.VsExtension
 {
@@ -95,9 +97,9 @@ namespace CodeConverter.VsExtension
             return items;
         }
 
-        public static IWpfTextViewHost GetCurrentViewHost(IServiceProvider serviceProvider)
+        public static async Task<IWpfTextViewHost> GetCurrentViewHostAsync(IAsyncServiceProvider serviceProvider)
         {
-            IVsTextManager txtMgr = (IVsTextManager)serviceProvider.GetService(typeof(SVsTextManager));
+            IVsTextManager txtMgr = (IVsTextManager) await serviceProvider.GetServiceAsync(typeof(SVsTextManager));
             IVsTextView vTextView = null;
             int mustHaveFocus = 1;
             txtMgr.GetActiveView(mustHaveFocus, null, out vTextView);
@@ -118,12 +120,7 @@ namespace CodeConverter.VsExtension
             viewHost.TextView.TextDataModel.DocumentBuffer.Properties.TryGetProperty(typeof(ITextDocument), out textDocument);
             return textDocument;
         }
-
-        public static VisualStudioWorkspace GetWorkspace(IServiceProvider serviceProvider)
-        {
-            return (VisualStudioWorkspace) serviceProvider.GetService(typeof(VisualStudioWorkspace)); 
-        }
-
+        
         public static void ShowException(IServiceProvider serviceProvider, string title, Exception ex)
         {
             VsShellUtilities.ShowMessageBox(

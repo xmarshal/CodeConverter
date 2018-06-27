@@ -6,10 +6,14 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.ComponentModelHost;
 using Microsoft.VisualStudio.LanguageServices;
 using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Shell.Interop;
+using Microsoft.VisualStudio.Threading;
+using IAsyncServiceProvider = Microsoft.VisualStudio.Shell.IAsyncServiceProvider;
 using Task = System.Threading.Tasks.Task;
 
 namespace CodeConverter.VsExtension
@@ -41,11 +45,9 @@ namespace CodeConverter.VsExtension
     [SuppressMessage("StyleCop.CSharp.DocumentationRules", "SA1650:ElementDocumentationMustBeSpelledCorrectly", Justification = "pkgdef, VS and vsixmanifest are valid VS terms")]
     public sealed class REConverterPackage : AsyncPackage
     {
-        public VisualStudioWorkspace VsWorkspace {
-            get {
-                var componentModel = (IComponentModel)GetGlobalService(typeof(SComponentModel));
-                return componentModel.GetService<VisualStudioWorkspace>();
-            }
+        public async Task<VisualStudioWorkspace> GetWorkspaceAsync()
+        {
+            return (VisualStudioWorkspace) await AsyncServiceProvider.GetServiceAsync(typeof(VisualStudioWorkspace));
         }
 
         /// <summary>
@@ -93,15 +95,18 @@ namespace CodeConverter.VsExtension
 
         public ConverterOptionsPage Options => (ConverterOptionsPage)GetDialogPage(typeof(ConverterOptionsPage));
 
+        public IAsyncServiceProvider AsyncServiceProvider { get; private set; }
+
         /// <summary>
         /// Initialization of the package; this method is called right after the package is sited, so this is the place
         /// where you can put all the initialization code that rely on services provided by VisualStudio.
         /// </summary>
-        protected override Task InitializeAsync(CancellationToken cancellationToken, IProgress<ServiceProgressData> progress)
+        protected override async Task InitializeAsync(CancellationToken cancellationToken, IProgress<ServiceProgressData> progress)
         {
-            ConvertCSToVBCommand.Initialize(this);
-            ConvertVBToCSCommand.Initialize(this);
-            base.Initialize();
+            AsyncServiceProvider = this;
+
+            await Task.WhenAll(ConvertCSToVBCommand.InitializeAsync(this), ConvertVBToCSCommand.InitializeAsync(this));
+            await base.InitializeAsync(cancellationToken, progress);
         }
     }
 }
