@@ -36,14 +36,14 @@ namespace ICSharpCode.CodeConverter.CSharp
 
             public MethodBodyVisitor(VBasic.VisualBasicSyntaxNode methodNode, SemanticModel semanticModel,
                 VBasic.VisualBasicSyntaxVisitor<CSharpSyntaxNode> nodesVisitor,
-                Stack<string> withBlockTempVariableNames, TriviaConverter triviaConverter)
+                Stack<string> withBlockTempVariableNames, TriviaConverter triviaConverter, CommonConversions commonConversions)
             {
                 _methodNode = methodNode;
                 this._semanticModel = semanticModel;
                 this._nodesVisitor = nodesVisitor;
                 this._withBlockTempVariableNames = withBlockTempVariableNames;
                 CommentConvertingVisitor = new CommentConvertingMethodBodyVisitor(this, triviaConverter);
-                CommonConversions = new CommonConversions(semanticModel, _nodesVisitor);
+                CommonConversions = commonConversions;
             }
 
             public override SyntaxList<StatementSyntax> DefaultVisit(SyntaxNode node)

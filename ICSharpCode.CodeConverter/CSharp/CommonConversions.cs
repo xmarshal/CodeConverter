@@ -26,11 +26,14 @@ namespace ICSharpCode.CodeConverter.CSharp
     internal class CommonConversions
     {
         private readonly SemanticModel _semanticModel;
+        private readonly SemanticModel _csSemanticModel;
         private readonly VisualBasicSyntaxVisitor<CSharpSyntaxNode> _nodesVisitor;
 
-        public CommonConversions(SemanticModel semanticModel, VisualBasicSyntaxVisitor<CSharpSyntaxNode> nodesVisitor)
+        public CommonConversions(SemanticModel semanticModel, SemanticModel csSemanticModel,
+            VisualBasicSyntaxVisitor<CSharpSyntaxNode> nodesVisitor)
         {
             _semanticModel = semanticModel;
+            _csSemanticModel = csSemanticModel;
             _nodesVisitor = nodesVisitor;
         }
 
@@ -77,9 +80,10 @@ namespace ICSharpCode.CodeConverter.CSharp
             {
                 return SyntaxFactory.PredefinedType(SyntaxFactory.Token(predefined));
             }
-
-            var typeName = typeInf.ConvertedType.ToMinimalCSharpDisplayString(_semanticModel, declarator.SpanStart);
-            return SyntaxFactory.ParseTypeName(typeName);
+            var csTypeSymbolName = _csSemanticModel.Compilation
+                .GetTypeByMetadataName(typeInf.ConvertedType.MetadataName)?.ToDisplayString() 
+                ?? typeInf.ConvertedType.ToMinimalCSharpDisplayString(_semanticModel, declarator.SpanStart);
+            return SyntaxFactory.ParseTypeName(csTypeSymbolName);
         }
 
         private static TypeSyntax CreateVarTypeName()

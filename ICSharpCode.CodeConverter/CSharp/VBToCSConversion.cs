@@ -30,7 +30,7 @@ namespace ICSharpCode.CodeConverter.CSharp
         public SyntaxTree SingleFirstPass(Compilation sourceCompilation, SyntaxTree tree)
         {
             _sourceCompilation = sourceCompilation;
-            var converted = VisualBasicConverter.ConvertCompilationTree((VisualBasicCompilation)sourceCompilation, (VisualBasicSyntaxTree)tree);
+            var converted = VisualBasicConverter.ConvertCompilationTree((VisualBasicCompilation)sourceCompilation, (VisualBasicSyntaxTree)tree, _convertedCompilation);
             var convertedTree = SyntaxFactory.SyntaxTree(converted);
             _convertedCompilation = _convertedCompilation.AddSyntaxTrees(convertedTree);
             return convertedTree;

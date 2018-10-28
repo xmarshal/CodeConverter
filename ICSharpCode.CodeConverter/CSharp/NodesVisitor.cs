@@ -17,6 +17,7 @@ namespace ICSharpCode.CodeConverter.CSharp
         class NodesVisitor : VBasic.VisualBasicSyntaxVisitor<CSharpSyntaxNode>
         {
             private readonly SemanticModel _semanticModel;
+            private readonly SemanticModel _csSemanticModel;
             private readonly Dictionary<ITypeSymbol, string> _createConvertMethodsLookupByReturnType;
             private List<MethodWithHandles> _methodsWithHandles;
             private readonly Dictionary<VBSyntax.StatementSyntax, MemberDeclarationSyntax[]> _additionalDeclarations = new Dictionary<VBSyntax.StatementSyntax, MemberDeclarationSyntax[]>();
@@ -29,12 +30,13 @@ namespace ICSharpCode.CodeConverter.CSharp
 
             private CommonConversions CommonConversions { get; }
 
-            public NodesVisitor(SemanticModel semanticModel)
+            public NodesVisitor(SemanticModel vbSemanticModel, SemanticModel csSemanticModel)
             {
-                this._semanticModel = semanticModel;
+                this._semanticModel = vbSemanticModel;
+                _csSemanticModel = csSemanticModel;
                 TriviaConvertingVisitor = new CommentConvertingNodesVisitor(this);
-                _createConvertMethodsLookupByReturnType = CreateConvertMethodsLookupByReturnType(semanticModel);
-                CommonConversions = new CommonConversions(semanticModel, TriviaConvertingVisitor);
+                _createConvertMethodsLookupByReturnType = CreateConvertMethodsLookupByReturnType(vbSemanticModel);
+                CommonConversions = new CommonConversions(vbSemanticModel, csSemanticModel, TriviaConvertingVisitor);
                 _queryConverter = new QueryConverter(CommonConversions, TriviaConvertingVisitor);
                 _additionalInitializers = new AdditionalInitializers();
             }
@@ -712,7 +714,7 @@ namespace ICSharpCode.CodeConverter.CSharp
 
             private VBasic.VisualBasicSyntaxVisitor<SyntaxList<StatementSyntax>> CreateMethodBodyVisitor(VBasic.VisualBasicSyntaxNode node, bool isIterator = false)
             {
-                var methodBodyVisitor = new MethodBodyVisitor(node, _semanticModel, TriviaConvertingVisitor, _withBlockTempVariableNames, TriviaConvertingVisitor.TriviaConverter) {IsIterator = isIterator};
+                var methodBodyVisitor = new MethodBodyVisitor(node, _semanticModel, TriviaConvertingVisitor, _withBlockTempVariableNames, TriviaConvertingVisitor.TriviaConverter, CommonConversions) {IsIterator = isIterator};
                 return methodBodyVisitor.CommentConvertingVisitor;
             }
 
