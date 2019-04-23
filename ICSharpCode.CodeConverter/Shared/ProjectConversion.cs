@@ -9,9 +9,19 @@ using ICSharpCode.CodeConverter.Util;
 using ICSharpCode.CodeConverter.VB;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Formatting;
+using Microsoft.CodeAnalysis.Options;
+using Microsoft.CodeAnalysis.Simplification;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.CodeAnalysis.VisualBasic;
+using Microsoft.CodeAnalysis.VisualBasic.Syntax;
+using AttributeSyntax = Microsoft.CodeAnalysis.VisualBasic.Syntax.AttributeSyntax;
+using ExpressionSyntax = Microsoft.CodeAnalysis.VisualBasic.Syntax.ExpressionSyntax;
+using FieldDeclarationSyntax = Microsoft.CodeAnalysis.VisualBasic.Syntax.FieldDeclarationSyntax;
+using StatementSyntax = Microsoft.CodeAnalysis.VisualBasic.Syntax.StatementSyntax;
+using TypeConstraintSyntax = Microsoft.CodeAnalysis.VisualBasic.Syntax.TypeConstraintSyntax;
+using XmlNameAttributeSyntax = Microsoft.CodeAnalysis.VisualBasic.Syntax.XmlNameAttributeSyntax;
 
 namespace ICSharpCode.CodeConverter.Shared
 {
@@ -67,8 +77,8 @@ namespace ICSharpCode.CodeConverter.Shared
                 syntaxTree = annotatedSyntaxTree;
             }
 
-            var conversion = new ProjectConversion(compilation, new[] {syntaxTree}, languageConversion, convertedCompilation);
-            var conversionResults = ConvertProjectContents(conversion).ToList();
+            var enumerableProjectContents = ConvertTrees(compilation, new[] { syntaxTree }, convertedCompilation, languageConversion);
+            var conversionResults = enumerableProjectContents.ToList();
             var codeResult = conversionResults.SingleOrDefault(x => !string.IsNullOrWhiteSpace(x.ConvertedCode))
                              ?? conversionResults.First();
             codeResult.Exceptions = conversionResults.SelectMany(x => x.Exceptions).ToArray();
@@ -90,9 +100,51 @@ namespace ICSharpCode.CodeConverter.Shared
             var solutionDir = Path.GetDirectoryName(solutionFilePath);
             var compilation = await project.GetCompilationAsync();
             var syntaxTreesToConvert = compilation.SyntaxTrees.Where(t => t.FilePath.StartsWith(solutionDir));
-            var projectConversion = new ProjectConversion(compilation, syntaxTreesToConvert,
-                languageConversion, GetConvertedCompilationWithProjectReferences(project, languageConversion));
-            return ConvertProjectContents(projectConversion);
+            var convertedCompilation = GetConvertedCompilationWithProjectReferences(project, languageConversion);
+            return ConvertTrees(compilation, syntaxTreesToConvert, convertedCompilation, languageConversion);
+        }
+
+        private static IEnumerable<ConversionResult> ConvertTrees(Compilation compilation,
+            IEnumerable<SyntaxTree> syntaxTrees, Compilation convertedCompilation,
+            ILanguageConversion languageConversion)
+        {
+            var adhocWorkspace = new AdhocWorkspace();
+            var syntaxTreesToConvert = syntaxTrees.Select(tree => {
+                var expandedSyntaxTree = GetExpandedSyntaxTree(compilation, tree, adhocWorkspace);
+                compilation = compilation.ReplaceSyntaxTree(tree, expandedSyntaxTree);
+                return expandedSyntaxTree;
+            });
+
+            var conversion = new ProjectConversion(compilation, syntaxTreesToConvert, languageConversion, convertedCompilation);
+            var enumerableProjectContents = ConvertProjectContents(conversion);
+            return enumerableProjectContents;
+        }
+
+        private static SyntaxTree GetExpandedSyntaxTree(Compilation compilation, SyntaxTree syntaxTree, AdhocWorkspace workspace)
+        {
+            var expandedRoot = ExpandAll(syntaxTree.GetRoot(), compilation.GetSemanticModel(syntaxTree), workspace);
+            return expandedRoot.SyntaxTree;
+        }
+
+        private static SyntaxNode ExpandAll(SyntaxNode node, SemanticModel semanticModel, AdhocWorkspace workspace)
+        {
+            return node.ReplaceNodes(node.ChildNodes(), (originalNode, rewrittenNode) => {
+                if (CanBeExpandedVb(rewrittenNode) || CanBeExpandedCs(rewrittenNode)) {
+                    return Simplifier.Expand(rewrittenNode, semanticModel, workspace);
+                }
+
+                return ExpandAll(rewrittenNode, semanticModel, workspace);
+            });
+        }
+
+        private static bool CanBeExpandedCs(SyntaxNode node)
+        {
+            return node is Microsoft.CodeAnalysis.CSharp.Syntax.AttributeSyntax || node is AttributeArgumentSyntax || node is ConstructorInitializerSyntax || node is Microsoft.CodeAnalysis.CSharp.Syntax.ExpressionSyntax || node is Microsoft.CodeAnalysis.CSharp.Syntax.FieldDeclarationSyntax || node is Microsoft.CodeAnalysis.CSharp.Syntax.StatementSyntax || node is CrefSyntax || node is Microsoft.CodeAnalysis.CSharp.Syntax.XmlNameAttributeSyntax || node is Microsoft.CodeAnalysis.CSharp.Syntax.TypeConstraintSyntax || node is BaseTypeSyntax;
+        }
+
+        private static bool CanBeExpandedVb(SyntaxNode rewrittenNode)
+        {
+            return rewrittenNode is ExpressionSyntax || rewrittenNode is StatementSyntax || rewrittenNode is AttributeSyntax || rewrittenNode is SimpleArgumentSyntax || rewrittenNode is CrefReferenceSyntax || rewrittenNode is TypeConstraintSyntax;
         }
 
         public static ConversionResult ConvertProjectFile(Project project, ILanguageConversion languageConversion, params (string, string)[] textReplacements)
@@ -146,10 +198,15 @@ namespace ICSharpCode.CodeConverter.Shared
         {
             var secondPassByFilePath = new Dictionary<string, SyntaxNode>();
             var adhocWorkspace = new AdhocWorkspace();
+            Project adhocTargetProject = adhocWorkspace.AddProject("Reduce", LanguageNames.CSharp); //TODO Vary language
             foreach (var firstPassResult in _firstPassResults) {
                 var treeFilePath = firstPassResult.Key;
                 try {
-                    secondPassByFilePath.Add(treeFilePath, SingleSecondPass(firstPassResult, adhocWorkspace));
+                    var secondPassSyntaxTree = SingleSecondPass(firstPassResult, adhocWorkspace);
+                    var document = adhocTargetProject.AddDocument(treeFilePath, secondPassSyntaxTree);
+                    var reduced = Simplifier.ReduceAsync(document).GetAwaiter().GetResult();
+                    var reducedNode = reduced.GetSyntaxRootAsync().GetAwaiter().GetResult();
+                    secondPassByFilePath.Add(treeFilePath, reducedNode);
                 }  catch (Exception e) {
                     secondPassByFilePath.Add(treeFilePath, Format(firstPassResult.Value.GetRoot(), adhocWorkspace));
                     _errors.TryAdd(treeFilePath, e.ToString());
@@ -260,5 +317,6 @@ namespace ICSharpCode.CodeConverter.Shared
 
             return selectedNode ?? resultNode;
         }
+
     }
 }
